@@ -13,6 +13,8 @@ use pasta_curves::{
 };
 use std::marker::PhantomData;
 
+fn main() {}
+
 pub trait NumericInstructions<F: FieldExt>: Chip<F> {
     /// Variable representing a number.
     type Word;
@@ -351,42 +353,38 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
 fn decompose(word: Fp) -> (Fp, Fp) {
     let mut even_only = word.to_repr();
     even_only.iter_mut().for_each(|bits| {
-        *bits &= 0b10101010;
+        *bits &= 0b01010101;
     });
 
     let mut odd_only = word.to_repr();
     odd_only.iter_mut().for_each(|bits| {
         // im too tired!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        *bits &= 0b01010101;
+        *bits &= 0b10101010;
     });
 
     let even_only = Fp::from_repr(even_only).unwrap();
     let odd_only = Fp::from_repr(odd_only).unwrap();
 
-    // if cfg!(debug_assertions) {
-    let even_only_debug = word;
-    even_only_debug
-        .to_le_bits()
-        .iter_mut()
-        .enumerate()
-        .for_each(|(i, b)| {
-            if i % 2 != 0 {
-                b.set(false)
-            }
-        });
-    let odd_only_debug = word;
-    odd_only_debug
-        .to_le_bits()
-        .iter_mut()
-        .enumerate()
-        .for_each(|(i, b)| {
-            if i % 2 == 0 {
-                b.set(false)
-            }
-        });
-    assert_eq!(odd_only_debug, odd_only);
-    assert_eq!(even_only_debug, even_only);
-    // }
-
     (even_only, odd_only)
+}
+
+#[test]
+fn decompose_test_even_odd() {
+    let odds = 0xAAAA;
+    let evens = 0x5555;
+    let (e, o) = decompose(Fp::from_u128(odds));
+    assert_eq!(e.get_lower_128(), 0);
+    assert_eq!(o.get_lower_128(), odds);
+    let (e, o) = decompose(Fp::from_u128(evens));
+    assert_eq!(e.get_lower_128(), evens);
+    assert_eq!(o.get_lower_128(), 0);
+}
+
+use proptest::prelude::*;
+proptest! {
+    #[test]
+    fn decompose_test(a in 0..u128::MAX) {
+        let a = Fp::from_u128(a);
+        decompose(a);
+    }
 }
