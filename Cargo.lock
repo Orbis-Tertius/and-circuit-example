@@ -18,6 +18,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "and-circuit-example"
+version = "0.1.0"
+dependencies = [
+ "halo2_proofs",
+ "pasta_curves",
+ "plotters",
+ "proptest",
+ "rand_core",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -508,8 +519,8 @@ dependencies = [
 
 [[package]]
 name = "halo2_proofs"
-version = "0.1.0-beta.1"
-source = "git+https://github.com/zcash/halo2.git?rev=9617336d46a18f3949260731d02bd711fba9d863#9617336d46a18f3949260731d02bd711fba9d863"
+version = "0.1.0-beta.2"
+source = "git+https://github.com/zcash/halo2.git?rev=c12620c598a15f6686767b4cb6ba145396d6d4df#c12620c598a15f6686767b4cb6ba145396d6d4df"
 dependencies = [
  "blake2b_simd",
  "bumpalo",
@@ -596,17 +607,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51b9bbe6c47d51fc3e1a9b945965946b4c44142ab8792c50835a980d362c2710"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "lookups-example"
-version = "0.1.0"
-dependencies = [
- "halo2_proofs",
- "pasta_curves",
- "plotters",
- "proptest",
- "rand_core",
 ]
 
 [[package]]

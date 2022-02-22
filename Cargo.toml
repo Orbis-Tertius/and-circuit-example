@@ -1,5 +1,5 @@
 [package]
-name = "lookups-example"
+name = "and-circuit-example"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,5 +13,5 @@ proptest = "1.0.0"
 
 [dependencies.halo2_proofs]
 git = "https://github.com/zcash/halo2.git"
-rev = "9617336d46a18f3949260731d02bd711fba9d863"
+rev = "c12620c598a15f6686767b4cb6ba145396d6d4df"
 features = ["dev-graph"]
