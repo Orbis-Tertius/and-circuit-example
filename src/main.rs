@@ -79,7 +79,6 @@ pub struct AndConfig {
     s_add: Selector,
     s_decompose: Selector,
     s_compose: Selector,
-    s_lookup: Selector,
 }
 
 impl<F: FieldExt> AndChip<F> {
@@ -102,9 +101,8 @@ impl<F: FieldExt> AndChip<F> {
             meta.enable_equality(*column);
         }
         let s_add = meta.selector();
-        let s_decompose = meta.selector();
+        let s_decompose = meta.complex_selector();
         let s_compose = meta.selector();
-        let s_lookup = meta.complex_selector();
         let even_bits = meta.lookup_table_column();
 
         meta.create_gate("add", |meta| {
@@ -150,11 +148,12 @@ impl<F: FieldExt> AndChip<F> {
         });
 
         let _ = meta.lookup(|meta| {
-            let s_lookup = meta.query_selector(s_lookup);
+            let lookup = meta.query_selector(s_decompose);
+            // let lookup = Expression::Constant(F::from(1));
             let a = meta.query_advice(advice[0], Rotation::cur());
             let b = meta.query_advice(advice[1], Rotation::cur());
 
-            vec![(s_lookup.clone() * a, even_bits), (s_lookup * b, even_bits)]
+            vec![(lookup.clone() * a, even_bits), (lookup * b, even_bits)]
         });
 
         AndConfig {
@@ -164,7 +163,6 @@ impl<F: FieldExt> AndChip<F> {
             s_add,
             s_decompose,
             s_compose,
-            s_lookup,
         }
     }
 
@@ -199,7 +197,7 @@ fn even_bits_at(mut i: usize) -> usize {
         c += 1;
     }
 
-    r
+    dbg!(r)
 }
 
 #[test]
@@ -311,7 +309,6 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
                 dbg!(e);
                 dbg!(o);
                 config.s_decompose.enable(&mut region, 0)?;
-                config.s_lookup.enable(&mut region, 0)?;
 
                 let e_cell = region
                     .assign_advice(|| "even bits", config.advice[0], 0, || Ok(e))
@@ -429,7 +426,7 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(decompose)?;
 
         let (be, bo) =
-            field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), f_be, f_bo, b)?;
+            field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), dbg!(f_be), dbg!(f_bo), dbg!(b))?;
 
         let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
         let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
