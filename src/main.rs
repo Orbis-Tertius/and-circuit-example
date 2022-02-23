@@ -285,12 +285,11 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
         let config = self.config();
 
         layouter.assign_region(
-            || "decompose",
+            || "compose",
             |mut region: Region<'_, F>| {
                 config.s_compose.enable(&mut region, 0)?;
-
-                a.0.copy_advice(|| "out", &mut region, config.advice[0], 1)?;
-                b.0.copy_advice(|| "out", &mut region, config.advice[0], 1)?;
+                a.0.copy_advice(|| "lhs", &mut region, config.advice[0], 0)?;
+                b.0.copy_advice(|| "rhs", &mut region, config.advice[1], 0)?;
                 let value =
                     a.0.value()
                         .and_then(|a| b.0.value().map(|b| *a + F::from(2) * *b));
@@ -393,31 +392,32 @@ impl Circuit<Fp> for MyCircuit<Fp> {
 
         // Load our private values into the circuit.
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
-        let a2 = field_chip.load_private(layouter.namespace(|| "load a2"), self.a)?;
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
         let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(decompose)?; // 0 and 1
+
         let (ae, ao) =
             field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), f_ae, f_ao, a)?;
+
         let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(decompose)?;
+
         let (be, bo) =
             field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), f_be, f_bo, b)?;
+
         let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
         let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
         let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
         let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
+
         let (ee, eo) =
             field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), f_ee, f_eo, e)?;
-        let (oe, oo) = field_chip.verify_decompose(
-            layouter.namespace(|| "o decomposition"),
-            f_oe,
-            f_oo,
-            dbg!(o),
-        )?;
+
+        let (oe, oo) =
+            field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), f_oe, f_oo, o)?;
+
         let a_and_b = field_chip.compose(layouter.namespace(|| "compose eo and oo"), eo, oo)?;
 
         // Expose the result as a public input to the circuit.
-        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
-        // field_chip.expose_public(layouter.namespace(|| "expose a2"), dbg!(a2), 0)
+        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), a_and_b, 0)
     }
 }
 
@@ -480,7 +480,7 @@ fn main() {
     let B = 3;
     let a = Fp::from(A);
     let b = Fp::from(B);
-    let c = Fp::from(dbg!(A & B));
+    let c = Fp::from(A & B);
 
     // Instantiate the circuit with the private inputs.
     let circuit = MyCircuit {
