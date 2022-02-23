@@ -13,8 +13,6 @@ use pasta_curves::{
 };
 use std::marker::PhantomData;
 
-fn main() {}
-
 pub trait NumericInstructions<F: FieldExt>: Chip<F> {
     /// Variable representing a number.
     type Word;
@@ -395,4 +393,34 @@ proptest! {
         let a = Fp::from_u128(a);
         decompose(a);
     }
+}
+
+fn main() {
+    use halo2_proofs::{dev::MockProver, pasta::Fp};
+
+    // ANCHOR: test-circuit
+    // The number of rows in our circuit cannot exceed 2^k. Since our example
+    // circuit is very small, we can pick a very small value here.
+    let k = 5;
+
+    // Prepare the private and public inputs to the circuit!
+    let A = 2;
+    let B =3;
+    let a = Fp::from(A);
+    let b = Fp::from(B);
+    let c = Fp::from(A & B);
+
+    // Instantiate the circuit with the private inputs.
+    let circuit = MyCircuit {
+        a: Some(a),
+        b: Some(b),
+    };
+
+    // Arrange the public input. We expose the multiplication result in row 0
+    // of the instance column, so we position it there in our public inputs.
+    let mut public_inputs = vec![c];
+
+    // Given the correct public input, our circuit will verify.
+    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
+    assert_eq!(prover.verify(), Ok(()));
 }
