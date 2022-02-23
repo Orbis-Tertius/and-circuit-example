@@ -1,16 +1,14 @@
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{layouter, AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
+    circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
+    dev::MockProver,
     plonk::{
         Advice, Circuit, Column, ConstraintSystem, Error, Expression, Fixed, Instance, Selector,
         TableColumn,
     },
     poly::Rotation,
 };
-use pasta_curves::{
-    group::ff::{PrimeField, PrimeFieldBits},
-    Fp,
-};
+use pasta_curves::{group::ff::PrimeField, Fp};
 use std::marker::PhantomData;
 
 const WORD_BITS: u32 = 8;
@@ -438,10 +436,10 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
         let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
 
-        let (ee, eo) =
+        let (_ee, eo) =
             field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), f_ee, f_eo, e)?;
 
-        let (oe, oo) =
+        let (_oe, oo) =
             field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), f_oe, f_oo, o)?;
 
         let a_and_b = field_chip.compose(layouter.namespace(|| "compose eo and oo"), eo, oo)?;
@@ -498,16 +496,14 @@ proptest! {
 }
 
 fn main() {
-    use halo2_proofs::{dev::MockProver, pasta::Fp};
-
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example
     // circuit is very small, we can pick a very small value here.
     let k = 5;
 
     // Prepare the private and public inputs to the circuit!
-    let A = 2;
-    let B = 3;
+    const A: u64 = 2;
+    const B: u64 = 3;
     let a = Fp::from(A);
     let b = Fp::from(B);
     let c = Fp::from(A & B);
@@ -520,9 +516,9 @@ fn main() {
 
     // Arrange the public input. We expose the multiplication result in row 0
     // of the instance column, so we position it there in our public inputs.
-    let mut public_inputs = vec![c];
+    let public_inputs = vec![c];
 
     // Given the correct public input, our circuit will verify.
-    let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
+    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
 }
