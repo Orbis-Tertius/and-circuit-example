@@ -339,16 +339,20 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         // Load our private values into the circuit.
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
-        let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(|a| decompose(a))?;
-        let (ae, ao) = field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), f_ae, f_ao, a)?;
-        let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(|a| decompose(a))?;
-        let (be, bo) = field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), f_be, f_bo, b)?;
+        let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(decompose)?;
+        let (ae, ao) =
+            field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), f_ae, f_ao, a)?;
+        let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(decompose)?;
+        let (be, bo) =
+            field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), f_be, f_bo, b)?;
         let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
         let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
         let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
         let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
-        let (ee, eo) = field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), f_ee, f_eo, e)?;
-        let (oe, oo) = field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), f_oe, f_oo, o)?;
+        let (ee, eo) =
+            field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), f_ee, f_eo, e)?;
+        let (oe, oo) =
+            field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), f_oe, f_oo, o)?;
         let a_and_b = field_chip.add(layouter.namespace(|| "eo + oo"), eo, oo)?;
 
         // Expose the result as a public input to the circuit.
@@ -392,6 +396,13 @@ proptest! {
     fn decompose_test(a in 0..u128::MAX) {
         let a = Fp::from_u128(a);
         decompose(a);
+    }
+
+    #[test]
+    fn fp_u128_test(n in 0..u128::MAX) {
+        let a = Fp::from_u128(n);
+        let b = a.get_lower_128();
+        assert_eq!(b, n)
     }
 }
 
