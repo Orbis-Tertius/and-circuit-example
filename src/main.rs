@@ -35,6 +35,13 @@ pub trait NumericInstructions<F: FieldExt>: Chip<F> {
         c: Self::Word,
     ) -> Result<(Self::Word, Self::Word), Error>;
 
+    fn compose(
+        &self,
+        layouter: impl Layouter<F>,
+        a: Self::Word,
+        b: Self::Word,
+    ) -> Result<Self::Word, Error>;
+
     /// Exposes a number as a public input to the circuit.
     fn expose_public(
         &self,
@@ -71,6 +78,7 @@ pub struct AndConfig {
     // multiple sets of instructions.
     s_add: Selector,
     s_decompose: Selector,
+    s_compose: Selector,
 }
 
 impl<F: FieldExt> AndChip<F> {
@@ -94,6 +102,7 @@ impl<F: FieldExt> AndChip<F> {
         }
         let s_add = meta.selector();
         let s_decompose = meta.selector();
+        let s_compose = meta.selector();
         let even_bits = meta.lookup_table_column();
 
         meta.create_gate("add", |meta| {
@@ -124,12 +133,27 @@ impl<F: FieldExt> AndChip<F> {
             vec![s_decompose * (lhs + Expression::Constant(F::from(2)) * rhs - out)]
         });
 
+        meta.create_gate("compose", |meta| {
+            let lhs = meta.query_advice(advice[0], Rotation::cur());
+            let rhs = meta.query_advice(advice[1], Rotation::cur());
+            let out = meta.query_advice(advice[0], Rotation::next());
+            let s_compose = meta.query_selector(s_compose);
+
+            // Finally, we return the polynomial expressions that constrain this gate.
+            // For our multiplication gate, we only need a single polynomial constraint.
+            //
+            // The polynomial expressions returned from `create_gate` will be
+            // constrained by the proving system to equal zero. Our expression
+            vec![s_compose * (lhs + Expression::Constant(F::from(2)) * rhs - out)]
+        });
+
         AndConfig {
             advice,
             instance,
             even_bits,
             s_add,
             s_decompose,
+            s_compose,
         }
     }
 }
@@ -148,7 +172,7 @@ impl<F: FieldExt> Chip<F> for AndChip<F> {
 }
 
 /// A variable representing a number.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Word<F: FieldExt>(AssignedCell<F, F>);
 
 impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
@@ -251,6 +275,37 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
             },
         )
     }
+
+    fn compose(
+        &self,
+        mut layouter: impl Layouter<F>,
+        a: Self::Word,
+        b: Self::Word,
+    ) -> Result<Self::Word, Error> {
+        let config = self.config();
+
+        layouter.assign_region(
+            || "decompose",
+            |mut region: Region<'_, F>| {
+                config.s_compose.enable(&mut region, 0)?;
+
+                a.0.copy_advice(|| "out", &mut region, config.advice[0], 1)?;
+                b.0.copy_advice(|| "out", &mut region, config.advice[0], 1)?;
+                let value =
+                    a.0.value()
+                        .and_then(|a| b.0.value().map(|b| *a + F::from(2) * *b));
+
+                region
+                    .assign_advice(
+                        || "lhs + rhs",
+                        config.advice[0],
+                        1,
+                        || value.ok_or(Error::Synthesis),
+                    )
+                    .map(Word)
+            },
+        )
+    }
     // fn verify_decompose(
     //     &self,
     //     mut layouter: impl Layouter<F>,
@@ -338,8 +393,9 @@ impl Circuit<Fp> for MyCircuit<Fp> {
 
         // Load our private values into the circuit.
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
+        let a2 = field_chip.load_private(layouter.namespace(|| "load a2"), self.a)?;
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
-        let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(decompose)?;
+        let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(decompose)?; // 0 and 1
         let (ae, ao) =
             field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), f_ae, f_ao, a)?;
         let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(decompose)?;
@@ -351,12 +407,17 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
         let (ee, eo) =
             field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), f_ee, f_eo, e)?;
-        let (oe, oo) =
-            field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), f_oe, f_oo, o)?;
-        let a_and_b = field_chip.add(layouter.namespace(|| "eo + oo"), eo, oo)?;
+        let (oe, oo) = field_chip.verify_decompose(
+            layouter.namespace(|| "o decomposition"),
+            f_oe,
+            f_oo,
+            dbg!(o),
+        )?;
+        let a_and_b = field_chip.compose(layouter.namespace(|| "compose eo and oo"), eo, oo)?;
 
         // Expose the result as a public input to the circuit.
-        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), a_and_b, 0)
+        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
+        // field_chip.expose_public(layouter.namespace(|| "expose a2"), dbg!(a2), 0)
     }
 }
 
@@ -416,10 +477,10 @@ fn main() {
 
     // Prepare the private and public inputs to the circuit!
     let A = 2;
-    let B =3;
+    let B = 3;
     let a = Fp::from(A);
     let b = Fp::from(B);
-    let c = Fp::from(A & B);
+    let c = Fp::from(dbg!(A & B));
 
     // Instantiate the circuit with the private inputs.
     let circuit = MyCircuit {
