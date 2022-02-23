@@ -354,7 +354,7 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         let a_and_b = field_chip.add(layouter.namespace(|| "eo + oo"), eo, oo)?;
 
         // Expose the result as a public input to the circuit.
-        field_chip.expose_public(layouter.namespace(|| "expose c"), a_and_b, 0)
+        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), a_and_b, 0)
     }
 }
 
