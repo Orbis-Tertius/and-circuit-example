@@ -1,6 +1,6 @@
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
+    circuit::{layouter, AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
     plonk::{
         Advice, Circuit, Column, ConstraintSystem, Error, Expression, Fixed, Instance, Selector,
         TableColumn,
@@ -12,6 +12,8 @@ use pasta_curves::{
     Fp,
 };
 use std::marker::PhantomData;
+
+const WORD_BITS: u32 = 8;
 
 pub trait NumericInstructions<F: FieldExt>: Chip<F> {
     /// Variable representing a number.
@@ -147,6 +149,8 @@ impl<F: FieldExt> AndChip<F> {
             vec![s_compose * (lhs + Expression::Constant(F::from(2)) * rhs - out)]
         });
 
+        let _ = meta.lookup(|meta| vec![(todo!(), even_bits)]);
+
         AndConfig {
             advice,
             instance,
@@ -156,6 +160,47 @@ impl<F: FieldExt> AndChip<F> {
             s_compose,
         }
     }
+
+    // Allocates all even bits in a a table for the word size AND_BITS.
+    // `2^(WORD_BITS/2)` rows of the constraint system.
+    fn alloc_table(&self, layouter: &mut impl Layouter<Fp>) -> Result<(), Error> {
+        layouter.assign_table(
+            || "even bits table",
+            |mut table| {
+                for i in 0..2usize.pow(WORD_BITS / 2) {
+                    table.assign_cell(
+                        || format!("even_bits row {}", i),
+                        self.config.even_bits,
+                        i,
+                        || Ok(Fp::from(even_bits_at(i) as u64)),
+                    )?;
+                }
+                Ok(())
+            },
+        )
+    }
+}
+
+fn even_bits_at(mut i: usize) -> usize {
+    let mut r = 0;
+    let mut c = 0;
+
+    while i != 0 {
+        let lower_bit = i % 2;
+        r += lower_bit * 4usize.pow(c);
+        i >>= 1;
+        c += 1;
+    }
+
+    r
+}
+
+#[test]
+fn even_bits_at_test() {
+    assert_eq!(0b0, even_bits_at(0));
+    assert_eq!(0b1, even_bits_at(1));
+    assert_eq!(0b100, even_bits_at(2));
+    assert_eq!(0b101, even_bits_at(3));
 }
 
 impl<F: FieldExt> Chip<F> for AndChip<F> {
@@ -305,34 +350,6 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
             },
         )
     }
-    // fn verify_decompose(
-    //     &self,
-    //     mut layouter: impl Layouter<F>,
-    //     a: Self::Word,
-    //     b: Self::Word,
-    //     c: Self::Word,
-    // ) -> Result<(), Error> {
-    //     let config = self.config();
-
-    //     layouter.assign_region(
-    //         || "decompose",
-    //         |mut region: Region<'_, F>| {
-    //             // We only want to use a single addition gate in this region,
-    //             // so we enable it at region offset 0; this means it will constrain
-    //             // cells at offsets 0 and 1.
-    //             config.s_decompose.enable(&mut region, 0)?;
-
-    //             // The inputs we've been given could be located anywhere in the circuit,
-    //             // but we can only rely on relative offsets inside this region. So we
-    //             // assign new cells inside the region and constrain them to have the
-    //             // same values as the inputs.
-    //             a.0.copy_advice(|| "lhs", &mut region, config.advice[0], 0)?;
-    //             b.0.copy_advice(|| "rhs", &mut region, config.advice[1], 0)?;
-    //             c.0.copy_advice(|| "out", &mut region, config.advice[0], 1)?;
-    //             Ok(())
-    //         },
-    //     )
-    // }
 
     fn expose_public(
         &self,
