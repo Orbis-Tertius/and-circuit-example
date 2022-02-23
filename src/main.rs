@@ -81,6 +81,7 @@ pub struct AndConfig {
     s_add: Selector,
     s_decompose: Selector,
     s_compose: Selector,
+    s_lookup: Selector,
 }
 
 impl<F: FieldExt> AndChip<F> {
@@ -105,6 +106,7 @@ impl<F: FieldExt> AndChip<F> {
         let s_add = meta.selector();
         let s_decompose = meta.selector();
         let s_compose = meta.selector();
+        let s_lookup = meta.complex_selector();
         let even_bits = meta.lookup_table_column();
 
         meta.create_gate("add", |meta| {
@@ -149,7 +151,13 @@ impl<F: FieldExt> AndChip<F> {
             vec![s_compose * (lhs + Expression::Constant(F::from(2)) * rhs - out)]
         });
 
-        let _ = meta.lookup(|meta| vec![(todo!(), even_bits)]);
+        let _ = meta.lookup(|meta| {
+            let s_lookup = meta.query_selector(s_lookup);
+            let a = meta.query_advice(advice[0], Rotation::cur());
+            let b = meta.query_advice(advice[1], Rotation::cur());
+
+            vec![(s_lookup.clone() * a, even_bits), (s_lookup * b, even_bits)]
+        });
 
         AndConfig {
             advice,
@@ -158,6 +166,7 @@ impl<F: FieldExt> AndChip<F> {
             s_add,
             s_decompose,
             s_compose,
+            s_lookup,
         }
     }
 
@@ -301,7 +310,10 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
                 // We only want to use a single addition gate in this region,
                 // so we enable it at region offset 0; this means it will constrain
                 // cells at offsets 0 and 1.
+                dbg!(e);
+                dbg!(o);
                 config.s_decompose.enable(&mut region, 0)?;
+                config.s_lookup.enable(&mut region, 0)?;
 
                 let e_cell = region
                     .assign_advice(|| "even bits", config.advice[0], 0, || Ok(e))
@@ -406,6 +418,7 @@ impl Circuit<Fp> for MyCircuit<Fp> {
     ) -> Result<(), Error> {
         // let field_chip = AndChip::<F>::construct(config);
         let field_chip = AndChip::<Fp>::construct(config);
+        field_chip.alloc_table(&mut layouter.namespace(|| "alloc table"))?;
 
         // Load our private values into the circuit.
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
