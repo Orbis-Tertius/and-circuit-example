@@ -337,11 +337,9 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
         // Load our private values into the circuit.
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
-        let ae = todo!();
-        let ao = todo!();
+        let (ae, ao) = decompose(a);
         field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), ae, ao, a)?;
-        let be = todo!();
-        let bo = todo!();
+        let (be, bo) = decompose(b);
         field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), be, bo, b)?;
         //...
 
@@ -350,6 +348,7 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
     }
 }
 
+/// Returns a word decomposed into even and odd bits `(EvenBits, OddBits)`
 fn decompose(word: Fp) -> (Fp, Fp) {
     let mut even_only = word.to_repr();
     even_only.iter_mut().for_each(|bits| {
@@ -358,7 +357,6 @@ fn decompose(word: Fp) -> (Fp, Fp) {
 
     let mut odd_only = word.to_repr();
     odd_only.iter_mut().for_each(|bits| {
-        // im too tired!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         *bits &= 0b10101010;
     });
 
