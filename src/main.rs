@@ -305,7 +305,8 @@ pub struct MyCircuit<F: FieldExt> {
     pub b: Option<F>,
 }
 
-impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
+// impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
+impl Circuit<Fp> for MyCircuit<Fp> {
     // Since we are using a single chip for everything, we can just reuse its config.
     type Config = AndConfig;
     type FloorPlanner = SimpleFloorPlanner;
@@ -314,7 +315,8 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
         Self::default()
     }
 
-    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+    // fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+    fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
         // We create the two advice columns that FieldChip uses for I/O.
         let advice = [meta.advice_column(), meta.advice_column()];
 
@@ -330,21 +332,29 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
     fn synthesize(
         &self,
         config: Self::Config,
-        mut layouter: impl Layouter<F>,
+        // mut layouter: impl Layouter<F>,
+        mut layouter: impl Layouter<Fp>,
     ) -> Result<(), Error> {
-        let field_chip = AndChip::<F>::construct(config);
+        // let field_chip = AndChip::<F>::construct(config);
+        let field_chip = AndChip::<Fp>::construct(config);
 
         // Load our private values into the circuit.
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
-        let (ae, ao) = decompose(a);
-        field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), ae, ao, a)?;
-        let (be, bo) = decompose(b);
-        field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), be, bo, b)?;
-        //...
+        let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(|a| decompose(a))?;
+        let (ae, ao) = field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), f_ae, f_ao, a)?;
+        let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(|a| decompose(a))?;
+        let (be, bo) = field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), f_be, f_bo, b)?;
+        let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
+        let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
+        let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
+        let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
+        let (ee, eo) = field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), f_ee, f_eo, e)?;
+        let (oe, oo) = field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), f_oe, f_oo, o)?;
+        let a_and_b = field_chip.add(layouter.namespace(|| "eo + oo"), eo, oo)?;
 
         // Expose the result as a public input to the circuit.
-        // field_chip.expose_public(layouter.namespace(|| "expose c"), c, 0)
+        field_chip.expose_public(layouter.namespace(|| "expose c"), a_and_b, 0)
     }
 }
 
