@@ -373,7 +373,7 @@ fn decompose(word: Fp) -> (Fp, Fp) {
     let even_only = Fp::from_repr(even_only).unwrap();
     let odd_only = Fp::from_repr(odd_only).unwrap();
 
-    (even_only, odd_only)
+    (even_only, Fp::from_u128(odd_only.get_lower_128() >> 1))
 }
 
 #[test]
@@ -382,7 +382,7 @@ fn decompose_test_even_odd() {
     let evens = 0x5555;
     let (e, o) = decompose(Fp::from_u128(odds));
     assert_eq!(e.get_lower_128(), 0);
-    assert_eq!(o.get_lower_128(), odds);
+    assert_eq!(o.get_lower_128(), odds >> 1);
     let (e, o) = decompose(Fp::from_u128(evens));
     assert_eq!(e.get_lower_128(), evens);
     assert_eq!(o.get_lower_128(), 0);
