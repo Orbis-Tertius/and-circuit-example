@@ -374,7 +374,6 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
 /// In this struct we store the private input variables. We use `Option<F>` because
 /// they won't have any value during key generation. During proving, if any of these
 /// were `None` we would get an error.
-#[derive(Default)]
 pub struct MyCircuit<F: FieldExt> {
     pub a: Option<F>,
     pub b: Option<F>,
@@ -387,7 +386,8 @@ impl Circuit<Fp> for MyCircuit<Fp> {
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
-        Self::default()
+        // Self::default()
+        todo!()
     }
 
     // fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
@@ -425,8 +425,12 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         eprintln!("f_ae: {:#08b}", &f_ae.get_lower_128());
         eprintln!("f_ao: {:#08b}", &f_ao.get_lower_128());
         // eprintln!("a: {:#08b}", &a.0.value().unwrap().get_lower_128());
-        let (ae, ao) =
-            field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), dbg!(f_ae), dbg!(f_ao), dbg!(a))?;
+        let (ae, ao) = field_chip.verify_decompose(
+            layouter.namespace(|| "a decomposition"),
+            dbg!(f_ae),
+            dbg!(f_ao),
+            dbg!(a),
+        )?;
 
         let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(decompose)?;
 
@@ -434,37 +438,54 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         eprintln!("f_be: {:#08b}", &f_be.get_lower_128());
         eprintln!("f_bo: {:#08b}", &f_bo.get_lower_128());
         // eprintln!("b: {:#08b}", &b.0.value().unwrap().get_lower_128());
-        let (be, bo) =
-            field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), dbg!(f_be), dbg!(f_bo), dbg!(b))?;
+        let (be, bo) = field_chip.verify_decompose(
+            layouter.namespace(|| "b decomposition"),
+            dbg!(f_be),
+            dbg!(f_bo),
+            dbg!(b),
+        )?;
 
         // index 4
         let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
         // index 5
         let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
-        let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
-        let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
+        // let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
+        // let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
 
-        // index 6
-        eprintln!("f_ee: {:#08b}", &f_ee.get_lower_128());
-        eprintln!("f_eo: {:#08b}", &f_eo.get_lower_128());
-        // eprintln!("e: {:#08b}", &e.0.value().unwrap().get_lower_128());
-        let (_ee, eo) =
-            field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), dbg!(f_ee), dbg!(f_eo), dbg!(e))?;
+        // // index 6
+        // eprintln!("f_ee: {:#08b}", &f_ee.get_lower_128());
+        // eprintln!("f_eo: {:#08b}", &f_eo.get_lower_128());
+        // // eprintln!("e: {:#08b}", &e.0.value().unwrap().get_lower_128());
+        // let (_ee, eo) = field_chip.verify_decompose(
+        //     layouter.namespace(|| "e decomposition"),
+        //     dbg!(f_ee),
+        //     dbg!(f_eo),
+        //     dbg!(e),
+        // )?;
 
-        // index 7
-        eprintln!("f_oe: {:#08b}", &f_oe.get_lower_128());
-        eprintln!("f_oo: {:#08b}", &f_oo.get_lower_128());
-        // eprintln!("o: {:#08b}", &o.0.value().unwrap().get_lower_128());
-        let (_oe, oo) =
-            field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), dbg!(f_oe), dbg!(f_oo), dbg!(o))?;
+        // // index 7
+        // eprintln!("f_oe: {:#08b}", &f_oe.get_lower_128());
+        // eprintln!("f_oo: {:#08b}", &f_oo.get_lower_128());
+        // // eprintln!("o: {:#08b}", &o.0.value().unwrap().get_lower_128());
+        // let (_oe, oo) = field_chip.verify_decompose(
+        //     layouter.namespace(|| "o decomposition"),
+        //     dbg!(f_oe),
+        //     dbg!(f_oo),
+        //     dbg!(o),
+        // )?;
 
-        // index 8
-        // eprintln!("eo: {:#08b}", &eo.0.value().unwrap().get_lower_128());
-        // eprintln!("oo: {:#08b}", &oo.0.value().unwrap().get_lower_128());
-        let a_and_b = field_chip.compose(layouter.namespace(|| "compose eo and oo"), dbg!(eo), dbg!(oo))?;
+        // // index 8
+        // // eprintln!("eo: {:#08b}", &eo.0.value().unwrap().get_lower_128());
+        // // eprintln!("oo: {:#08b}", &oo.0.value().unwrap().get_lower_128());
+        // let a_and_b = field_chip.compose(
+        //     layouter.namespace(|| "compose eo and oo"),
+        //     dbg!(eo),
+        //     dbg!(oo),
+        // )?;
 
         // Expose the result as a public input to the circuit.
-        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
+        // field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
+        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(e), 0)
     }
 }
 
@@ -514,6 +535,40 @@ proptest! {
     }
 }
 
+#[test]
+fn circuit_layout_test() {
+    let k = 5;
+
+    // Prepare the private and public inputs to the circuit!
+    const A: u64 = 7;
+    const B: u64 = 6;
+    let a = Fp::from(A);
+    let b = Fp::from(B);
+
+    // Instantiate the circuit with the private inputs.
+    let circuit = MyCircuit {
+        a: Some(a),
+        b: Some(b),
+    };
+    use plotters::prelude::*;
+    let root = BitMapBackend::new("layout.png", (1920, 1080)).into_drawing_area();
+    root.fill(&WHITE).unwrap();
+    let root = root
+        .titled("Bitwise AND Circuit Layout", ("sans-serif", 60))
+        .unwrap();
+
+    halo2_proofs::dev::CircuitLayout::default()
+        .mark_equality_cells(true)
+        .show_equality_constraints(true)
+        // The first argument is the size parameter for the circuit.
+        .render(k, &circuit, &root)
+        .unwrap();
+
+    let dot_string = halo2_proofs::dev::circuit_dot_graph(&circuit);
+    let mut dot_graph = std::fs::File::create("circuit.dot").unwrap();
+    std::io::Write::write_all(&mut dot_graph, dot_string.as_bytes()).unwrap();
+}
+
 fn main() {
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example
@@ -533,27 +588,9 @@ fn main() {
         b: Some(b),
     };
 
-    // Arrange the public input. We expose the multiplication result in row 0
+    // Arrange the public input. We expose the bitwise AND result in row 0
     // of the instance column, so we position it there in our public inputs.
     let public_inputs = vec![c];
-
-
-    use plotters::prelude::*;
-    let root = BitMapBackend::new("layout.png", (1920, 1080)).into_drawing_area();
-    root.fill(&WHITE).unwrap();
-    let root = root
-        .titled("Example Circuit Layout", ("sans-serif", 60))
-        .unwrap();
-
-    halo2_proofs::dev::CircuitLayout::default()
-        // The first argument is the size parameter for the circuit.
-        .render(k, &circuit, &root)
-        .unwrap();
-
-    let dot_string = halo2_proofs::dev::circuit_dot_graph(&circuit);
-    let mut dot_graph = std::fs::File::create("circuit.dot").unwrap();
-    std::io::Write::write_all(&mut dot_graph, dot_string.as_bytes()).unwrap();
-
 
     // Given the correct public input, our circuit will verify.
     let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
