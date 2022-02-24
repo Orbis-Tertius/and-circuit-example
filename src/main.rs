@@ -147,11 +147,16 @@ impl<F: FieldExt> AndChip<F> {
 
         let _ = meta.lookup(|meta| {
             let lookup = meta.query_selector(s_decompose);
-            // let lookup = Expression::Constant(F::from(1));
             let a = meta.query_advice(advice[0], Rotation::cur());
+
+            vec![(lookup * a, even_bits)]
+        });
+
+        let _ = meta.lookup(|meta| {
+            let lookup = meta.query_selector(s_decompose);
             let b = meta.query_advice(advice[1], Rotation::cur());
 
-            vec![(lookup.clone() * a, even_bits), (lookup * b, even_bits)]
+            vec![(lookup * b, even_bits)]
         });
 
         AndConfig {
@@ -195,7 +200,7 @@ fn even_bits_at(mut i: usize) -> usize {
         c += 1;
     }
 
-    eprintln!("{:b}", r);
+    eprintln!("{:#08b}", r);
     r
 }
 
@@ -320,7 +325,7 @@ impl NumericInstructions<Fp> for AndChip<Fp> {
                         || "odd bits",
                         config.advice[1],
                         0,
-                        || o_oe.map(|oe| oe.1).ok_or(Error::Synthesis),
+                        || o_oe.map(|oe| dbg!(oe.1)).ok_or(Error::Synthesis),
                     )
                     .map(Word)?;
 
@@ -505,6 +510,25 @@ proptest! {
         let b = a.get_lower_128();
         assert_eq!(b, n)
     }
+
+    #[test]
+    fn all_words_test(a in 0..2u64.pow(WORD_BITS), b in 0..2u64.pow(WORD_BITS)) {
+      let k = 5;
+      let circuit = MyCircuit {
+          a: Some(Fp::from(a)),
+          b: Some(Fp::from(b)),
+      };
+
+      let c = Fp::from(a & b);
+
+      // Arrange the public input. We expose the bitwise AND result in row 0
+      // of the instance column, so we position it there in our public inputs.
+      let public_inputs = vec![c];
+
+      // Given the correct public input, our circuit will verify.
+      let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+      assert_eq!(prover.verify(), Ok(()));
+    }
 }
 
 #[test]
@@ -548,11 +572,16 @@ fn main() {
     let k = 5;
 
     // Prepare the private and public inputs to the circuit!
-    const A: u64 = 7;
-    const B: u64 = 6;
+    const A: u64 = 3;
+    const B: u64 = 4;
     let a = Fp::from(A);
     let b = Fp::from(B);
     let c = Fp::from(A & B);
+
+    let (a_e, a_o) = decompose(a);
+    eprintln!("a_e: {:#08b}", &a_e.get_lower_128());
+    eprintln!("a_o: {:#08b}", &a_o.get_lower_128());
+    eprintln!("c:   {:#08b}", &a_o.get_lower_128());
 
     // Instantiate the circuit with the private inputs.
     let circuit = MyCircuit {
