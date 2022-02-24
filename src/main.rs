@@ -197,7 +197,7 @@ fn even_bits_at(mut i: usize) -> usize {
         c += 1;
     }
 
-    dbg!(r)
+    r
 }
 
 #[test]
@@ -306,8 +306,6 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
                 // We only want to use a single addition gate in this region,
                 // so we enable it at region offset 0; this means it will constrain
                 // cells at offsets 0 and 1.
-                dbg!(e);
-                dbg!(o);
                 config.s_decompose.enable(&mut region, 0)?;
 
                 let e_cell = region
@@ -416,29 +414,38 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         field_chip.alloc_table(&mut layouter.namespace(|| "alloc table"))?;
 
         // Load our private values into the circuit.
+        // 0
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
+        // 1
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
         let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(decompose)?; // 0 and 1
 
+        // 2
         let (ae, ao) =
             field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), f_ae, f_ao, a)?;
 
         let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(decompose)?;
 
+        // 3
         let (be, bo) =
             field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), dbg!(f_be), dbg!(f_bo), dbg!(b))?;
 
+        // 4
         let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
         let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
+        // 5
         let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
         let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
 
+        // 6
         let (_ee, eo) =
             field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), f_ee, f_eo, e)?;
 
+        // 7
         let (_oe, oo) =
             field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), f_oe, f_oo, o)?;
 
+        // 8
         let a_and_b = field_chip.compose(layouter.namespace(|| "compose eo and oo"), eo, oo)?;
 
         // Expose the result as a public input to the circuit.
@@ -499,8 +506,29 @@ fn main() {
     let k = 5;
 
     // Prepare the private and public inputs to the circuit!
-    const A: u64 = 2;
-    const B: u64 = 3;
+    // n     e  o
+    //---------------------
+    // 0:    0  0:
+    // 1:    1  0:  3 4 7
+    // 10:   0  1:  3 4 8
+    // 11:   1  1:  7 8
+    // 100:  10 0:  3 4 7
+    // 101:  11 0:  3 4 7
+    // 110:  10 1:  3 4 7 8
+    // 111:  11 1:  3 4 7 8
+    // 1000: 0  10: 3 4 8
+    // 1001: 1  10: 3 4 7 8
+    // 1010: 0  11: 3 4 8
+    // 1011: 1  11: 3 4 7 8
+    // 1100: 10 10: 7 8
+
+    // paterns
+    // - 3 and 4 don't fail if e and o are the same - checked on 1111
+    // - 7 doesn't fail if e is 0 - checked on 101010
+    // - 8 doesn't fail if o is 0 - checked on 10101
+
+    const A: u64 = 21;
+    const B: u64 = 21;
     let a = Fp::from(A);
     let b = Fp::from(B);
     let c = Fp::from(A & B);
