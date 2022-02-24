@@ -120,9 +120,9 @@ impl<F: FieldExt> AndChip<F> {
         });
 
         meta.create_gate("decompose", |meta| {
-            let lhs = meta.query_advice(advice[0], Rotation::cur());
-            let rhs = meta.query_advice(advice[1], Rotation::cur());
-            let out = meta.query_advice(advice[0], Rotation::next());
+            let lhs = dbg!(meta.query_advice(advice[0], Rotation::cur()));
+            let rhs = dbg!(meta.query_advice(advice[1], Rotation::cur()));
+            let out = dbg!(meta.query_advice(advice[0], Rotation::next()));
             let s_decompose = meta.query_selector(s_decompose);
 
             // Finally, we return the polynomial expressions that constrain this gate.
@@ -197,7 +197,8 @@ fn even_bits_at(mut i: usize) -> usize {
         c += 1;
     }
 
-    dbg!(r)
+    eprintln!("{:b}", r);
+    r
 }
 
 #[test]
@@ -306,8 +307,6 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
                 // We only want to use a single addition gate in this region,
                 // so we enable it at region offset 0; this means it will constrain
                 // cells at offsets 0 and 1.
-                dbg!(e);
-                dbg!(o);
                 config.s_decompose.enable(&mut region, 0)?;
 
                 let e_cell = region
@@ -416,33 +415,56 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         field_chip.alloc_table(&mut layouter.namespace(|| "alloc table"))?;
 
         // Load our private values into the circuit.
+        // index 0
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
+        // index 1
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
         let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(decompose)?; // 0 and 1
 
+        // index 2
+        eprintln!("f_ae: {:#08b}", &f_ae.get_lower_128());
+        eprintln!("f_ao: {:#08b}", &f_ao.get_lower_128());
+        // eprintln!("a: {:#08b}", &a.0.value().unwrap().get_lower_128());
         let (ae, ao) =
-            field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), f_ae, f_ao, a)?;
+            field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), dbg!(f_ae), dbg!(f_ao), dbg!(a))?;
 
         let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(decompose)?;
 
+        // index 3
+        eprintln!("f_be: {:#08b}", &f_be.get_lower_128());
+        eprintln!("f_bo: {:#08b}", &f_bo.get_lower_128());
+        // eprintln!("b: {:#08b}", &b.0.value().unwrap().get_lower_128());
         let (be, bo) =
             field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), dbg!(f_be), dbg!(f_bo), dbg!(b))?;
 
+        // index 4
         let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
+        // index 5
         let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
         let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
         let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
 
+        // index 6
+        eprintln!("f_ee: {:#08b}", &f_ee.get_lower_128());
+        eprintln!("f_eo: {:#08b}", &f_eo.get_lower_128());
+        // eprintln!("e: {:#08b}", &e.0.value().unwrap().get_lower_128());
         let (_ee, eo) =
-            field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), f_ee, f_eo, e)?;
+            field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), dbg!(f_ee), dbg!(f_eo), dbg!(e))?;
 
+        // index 7
+        eprintln!("f_oe: {:#08b}", &f_oe.get_lower_128());
+        eprintln!("f_oo: {:#08b}", &f_oo.get_lower_128());
+        // eprintln!("o: {:#08b}", &o.0.value().unwrap().get_lower_128());
         let (_oe, oo) =
-            field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), f_oe, f_oo, o)?;
+            field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), dbg!(f_oe), dbg!(f_oo), dbg!(o))?;
 
-        let a_and_b = field_chip.compose(layouter.namespace(|| "compose eo and oo"), eo, oo)?;
+        // index 8
+        // eprintln!("eo: {:#08b}", &eo.0.value().unwrap().get_lower_128());
+        // eprintln!("oo: {:#08b}", &oo.0.value().unwrap().get_lower_128());
+        let a_and_b = field_chip.compose(layouter.namespace(|| "compose eo and oo"), dbg!(eo), dbg!(oo))?;
 
         // Expose the result as a public input to the circuit.
-        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), a_and_b, 0)
+        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
     }
 }
 
@@ -499,8 +521,8 @@ fn main() {
     let k = 5;
 
     // Prepare the private and public inputs to the circuit!
-    const A: u64 = 2;
-    const B: u64 = 3;
+    const A: u64 = 7;
+    const B: u64 = 6;
     let a = Fp::from(A);
     let b = Fp::from(B);
     let c = Fp::from(A & B);
@@ -514,6 +536,24 @@ fn main() {
     // Arrange the public input. We expose the multiplication result in row 0
     // of the instance column, so we position it there in our public inputs.
     let public_inputs = vec![c];
+
+
+    use plotters::prelude::*;
+    let root = BitMapBackend::new("layout.png", (1920, 1080)).into_drawing_area();
+    root.fill(&WHITE).unwrap();
+    let root = root
+        .titled("Example Circuit Layout", ("sans-serif", 60))
+        .unwrap();
+
+    halo2_proofs::dev::CircuitLayout::default()
+        // The first argument is the size parameter for the circuit.
+        .render(k, &circuit, &root)
+        .unwrap();
+
+    let dot_string = halo2_proofs::dev::circuit_dot_graph(&circuit);
+    let mut dot_graph = std::fs::File::create("circuit.dot").unwrap();
+    std::io::Write::write_all(&mut dot_graph, dot_string.as_bytes()).unwrap();
+
 
     // Given the correct public input, our circuit will verify.
     let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
