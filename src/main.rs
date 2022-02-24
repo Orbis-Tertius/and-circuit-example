@@ -30,8 +30,6 @@ pub trait NumericInstructions<F: FieldExt>: Chip<F> {
     fn verify_decompose(
         &self,
         layouter: impl Layouter<F>,
-        e: F,
-        o: F,
         c: Self::Word,
     ) -> Result<(Self::Word, Self::Word), Error>;
 
@@ -226,13 +224,13 @@ impl<F: FieldExt> Chip<F> for AndChip<F> {
 #[derive(Clone, Debug)]
 pub struct Word<F: FieldExt>(AssignedCell<F, F>);
 
-impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
-    type Word = Word<F>;
+impl NumericInstructions<Fp> for AndChip<Fp> {
+    type Word = Word<Fp>;
 
     fn load_private(
         &self,
-        mut layouter: impl Layouter<F>,
-        value: Option<F>,
+        mut layouter: impl Layouter<Fp>,
+        value: Option<Fp>,
     ) -> Result<Self::Word, Error> {
         let config = self.config();
 
@@ -253,7 +251,7 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
 
     fn add(
         &self,
-        mut layouter: impl Layouter<F>,
+        mut layouter: impl Layouter<Fp>,
         a: Self::Word,
         b: Self::Word,
     ) -> Result<Self::Word, Error> {
@@ -261,7 +259,7 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
 
         layouter.assign_region(
             || "add",
-            |mut region: Region<'_, F>| {
+            |mut region: Region<'_, Fp>| {
                 // We only want to use a single addition gate in this region,
                 // so we enable it at region offset 0; this means it will constrain
                 // cells at offsets 0 and 1.
@@ -294,27 +292,36 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
 
     fn verify_decompose(
         &self,
-        mut layouter: impl Layouter<F>,
-        e: F,
-        o: F,
+        mut layouter: impl Layouter<Fp>,
         c: Self::Word,
     ) -> Result<(Self::Word, Self::Word), Error> {
         let config = self.config();
 
         layouter.assign_region(
             || "decompose",
-            |mut region: Region<'_, F>| {
+            |mut region: Region<'_, Fp>| {
                 // We only want to use a single addition gate in this region,
                 // so we enable it at region offset 0; this means it will constrain
                 // cells at offsets 0 and 1.
                 config.s_decompose.enable(&mut region, 0)?;
 
+                let o_oe = c.0.value().map(|c| decompose(*c));
                 let e_cell = region
-                    .assign_advice(|| "even bits", config.advice[0], 0, || Ok(e))
+                    .assign_advice(
+                        || "even bits",
+                        config.advice[0],
+                        0,
+                        || o_oe.map(|oe| oe.0).ok_or(Error::Synthesis),
+                    )
                     .map(Word)?;
 
                 let o_cell = region
-                    .assign_advice(|| "odd bits", config.advice[1], 0, || Ok(o))
+                    .assign_advice(
+                        || "odd bits",
+                        config.advice[1],
+                        0,
+                        || o_oe.map(|oe| oe.1).ok_or(Error::Synthesis),
+                    )
                     .map(Word)?;
 
                 // The inputs we've been given could be located anywhere in the circuit,
@@ -329,7 +336,7 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
 
     fn compose(
         &self,
-        mut layouter: impl Layouter<F>,
+        mut layouter: impl Layouter<Fp>,
         a: Self::Word,
         b: Self::Word,
     ) -> Result<Self::Word, Error> {
@@ -337,13 +344,13 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
 
         layouter.assign_region(
             || "compose",
-            |mut region: Region<'_, F>| {
+            |mut region: Region<'_, Fp>| {
                 config.s_compose.enable(&mut region, 0)?;
                 a.0.copy_advice(|| "lhs", &mut region, config.advice[0], 0)?;
                 b.0.copy_advice(|| "rhs", &mut region, config.advice[1], 0)?;
                 let value =
                     a.0.value()
-                        .and_then(|a| b.0.value().map(|b| *a + F::from(2) * *b));
+                        .and_then(|a| b.0.value().map(|b| *a + Fp::from(2) * *b));
 
                 region
                     .assign_advice(
@@ -359,7 +366,7 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
 
     fn expose_public(
         &self,
-        mut layouter: impl Layouter<F>,
+        mut layouter: impl Layouter<Fp>,
         num: Self::Word,
         row: usize,
     ) -> Result<(), Error> {
@@ -374,6 +381,7 @@ impl<F: FieldExt> NumericInstructions<F> for AndChip<F> {
 /// In this struct we store the private input variables. We use `Option<F>` because
 /// they won't have any value during key generation. During proving, if any of these
 /// were `None` we would get an error.
+#[derive(Default)]
 pub struct MyCircuit<F: FieldExt> {
     pub a: Option<F>,
     pub b: Option<F>,
@@ -386,8 +394,7 @@ impl Circuit<Fp> for MyCircuit<Fp> {
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
-        // Self::default()
-        todo!()
+        Self::default()
     }
 
     // fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
@@ -419,77 +426,42 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;
         // index 1
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
-        let (f_ae, f_ao) = self.a.ok_or(Error::Synthesis).map(decompose)?; // 0 and 1
 
         // index 2
-        eprintln!("f_ae: {:#08b}", &f_ae.get_lower_128());
-        eprintln!("f_ao: {:#08b}", &f_ao.get_lower_128());
-        // eprintln!("a: {:#08b}", &a.0.value().unwrap().get_lower_128());
-        let (ae, ao) = field_chip.verify_decompose(
-            layouter.namespace(|| "a decomposition"),
-            dbg!(f_ae),
-            dbg!(f_ao),
-            dbg!(a),
-        )?;
-
-        let (f_be, f_bo) = self.b.ok_or(Error::Synthesis).map(decompose)?;
+        let (ae, ao) =
+            field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), dbg!(a))?;
 
         // index 3
-        eprintln!("f_be: {:#08b}", &f_be.get_lower_128());
-        eprintln!("f_bo: {:#08b}", &f_bo.get_lower_128());
-        // eprintln!("b: {:#08b}", &b.0.value().unwrap().get_lower_128());
-        let (be, bo) = field_chip.verify_decompose(
-            layouter.namespace(|| "b decomposition"),
-            dbg!(f_be),
-            dbg!(f_bo),
-            dbg!(b),
-        )?;
+        let (be, bo) =
+            field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), dbg!(b))?;
 
         // index 4
         let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
         // index 5
         let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
-        // let (f_ee, f_eo) = e.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
-        // let (f_oe, f_oo) = o.0.value().map(|a| decompose(*a)).ok_or(Error::Synthesis)?;
 
         // // index 6
-        // eprintln!("f_ee: {:#08b}", &f_ee.get_lower_128());
-        // eprintln!("f_eo: {:#08b}", &f_eo.get_lower_128());
-        // // eprintln!("e: {:#08b}", &e.0.value().unwrap().get_lower_128());
-        // let (_ee, eo) = field_chip.verify_decompose(
-        //     layouter.namespace(|| "e decomposition"),
-        //     dbg!(f_ee),
-        //     dbg!(f_eo),
-        //     dbg!(e),
-        // )?;
+        let (_ee, eo) =
+            field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), dbg!(e))?;
 
-        // // index 7
-        // eprintln!("f_oe: {:#08b}", &f_oe.get_lower_128());
-        // eprintln!("f_oo: {:#08b}", &f_oo.get_lower_128());
-        // // eprintln!("o: {:#08b}", &o.0.value().unwrap().get_lower_128());
-        // let (_oe, oo) = field_chip.verify_decompose(
-        //     layouter.namespace(|| "o decomposition"),
-        //     dbg!(f_oe),
-        //     dbg!(f_oo),
-        //     dbg!(o),
-        // )?;
+        // index 7
+        let (_oe, oo) =
+            field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), dbg!(o))?;
 
         // // index 8
-        // // eprintln!("eo: {:#08b}", &eo.0.value().unwrap().get_lower_128());
-        // // eprintln!("oo: {:#08b}", &oo.0.value().unwrap().get_lower_128());
-        // let a_and_b = field_chip.compose(
-        //     layouter.namespace(|| "compose eo and oo"),
-        //     dbg!(eo),
-        //     dbg!(oo),
-        // )?;
+        let a_and_b = field_chip.compose(
+            layouter.namespace(|| "compose eo and oo"),
+            dbg!(eo),
+            dbg!(oo),
+        )?;
 
         // Expose the result as a public input to the circuit.
         // field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
-        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(e), 0)
+        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
     }
 }
 
-/// Returns a word decomposed into even and odd bits `(EvenBits, OddBits)`
+/// Rtc/fonts/conf.d/40-nonlatin.conf", line 4: unknown element "description"
 fn decompose(word: Fp) -> (Fp, Fp) {
     let mut even_only = word.to_repr();
     even_only.iter_mut().for_each(|bits| {
