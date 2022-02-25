@@ -200,7 +200,6 @@ fn even_bits_at(mut i: usize) -> usize {
         c += 1;
     }
 
-    eprintln!("{:#08b}", r);
     r
 }
 
@@ -634,11 +633,6 @@ fn main() {
     let a = Fp::from(A);
     let b = Fp::from(B);
     let c = Fp::from(A & B);
-
-    let (a_e, a_o) = decompose(a);
-    eprintln!("a_e: {:#08b}", &a_e.get_lower_128());
-    eprintln!("a_o: {:#08b}", &a_o.get_lower_128());
-    eprintln!("c:   {:#08b}", &a_o.get_lower_128());
 
     // Instantiate the circuit with the private inputs.
     let circuit = MyCircuit {
