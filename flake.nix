@@ -20,7 +20,7 @@
                  inherit system;
                };
 
-            rustChannel = "1.58.1";
+            rustChannel = "1.59.0";
              rustPkgs =
                pkgs.rustBuilder.makePackageSet'
                  { inherit rustChannel;

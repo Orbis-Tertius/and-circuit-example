@@ -11,8 +11,6 @@ use halo2_proofs::{
 use pasta_curves::{group::ff::PrimeField, Fp};
 use std::marker::PhantomData;
 
-const WORD_BITS: u32 = 8;
-
 pub trait NumericInstructions<F: FieldExt>: Chip<F> {
     /// Variable representing a number.
     type Word;
@@ -51,7 +49,7 @@ pub trait NumericInstructions<F: FieldExt>: Chip<F> {
 
 /// The chip that will implement our instructions! Chips store their own
 /// config, as well as type markers if necessary.
-pub struct AndChip<F: FieldExt> {
+pub struct AndChip<F: FieldExt, const WORD_BITS: u32> {
     config: AndConfig,
     _marker: PhantomData<F>,
 }
@@ -79,7 +77,7 @@ pub struct AndConfig {
     s_compose: Selector,
 }
 
-impl<F: FieldExt> AndChip<F> {
+impl<F: FieldExt, const WORD_BITS: u32> AndChip<F, WORD_BITS> {
     fn construct(config: <Self as Chip<F>>::Config) -> Self {
         Self {
             config,
@@ -211,7 +209,7 @@ fn even_bits_at_test() {
     assert_eq!(0b101, even_bits_at(3));
 }
 
-impl<F: FieldExt> Chip<F> for AndChip<F> {
+impl<F: FieldExt, const WORD_BITS: u32> Chip<F> for AndChip<F, WORD_BITS> {
     type Config = AndConfig;
     type Loaded = ();
 
@@ -228,7 +226,7 @@ impl<F: FieldExt> Chip<F> for AndChip<F> {
 #[derive(Clone, Debug)]
 pub struct Word<F: FieldExt>(AssignedCell<F, F>);
 
-impl NumericInstructions<Fp> for AndChip<Fp> {
+impl<const WORD_BITS: u32> NumericInstructions<Fp> for AndChip<Fp, WORD_BITS> {
     type Word = Word<Fp>;
 
     fn load_private(
@@ -309,7 +307,7 @@ impl NumericInstructions<Fp> for AndChip<Fp> {
                 // cells at offsets 0 and 1.
                 config.s_decompose.enable(&mut region, 0)?;
 
-                let o_oe = c.0.value().map(|c| decompose(*c));
+                let o_oe = c.0.value().cloned().map(decompose);
                 let e_cell = region
                     .assign_advice(
                         || "even bits",
@@ -386,13 +384,13 @@ impl NumericInstructions<Fp> for AndChip<Fp> {
 /// they won't have any value during key generation. During proving, if any of these
 /// were `None` we would get an error.
 #[derive(Default)]
-pub struct MyCircuit<F: FieldExt> {
+pub struct MyCircuit<F: FieldExt, const WORD_BITS: u32 = 8> {
     pub a: Option<F>,
     pub b: Option<F>,
 }
 
 // impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
-impl Circuit<Fp> for MyCircuit<Fp> {
+impl<const WORD_BITS: u32> Circuit<Fp> for MyCircuit<Fp, WORD_BITS> {
     // Since we are using a single chip for everything, we can just reuse its config.
     type Config = AndConfig;
     type FloorPlanner = SimpleFloorPlanner;
@@ -412,7 +410,7 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         // Create a fixed column to load constants.
         let constant = meta.fixed_column();
 
-        AndChip::configure(meta, advice, instance, constant)
+        AndChip::<Fp, WORD_BITS>::configure(meta, advice, instance, constant)
     }
 
     fn synthesize(
@@ -422,7 +420,7 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         mut layouter: impl Layouter<Fp>,
     ) -> Result<(), Error> {
         // let field_chip = AndChip::<F>::construct(config);
-        let field_chip = AndChip::<Fp>::construct(config);
+        let field_chip = AndChip::<Fp, WORD_BITS>::construct(config);
         field_chip.alloc_table(&mut layouter.namespace(|| "alloc table"))?;
 
         // Load our private values into the circuit.
@@ -501,45 +499,112 @@ proptest! {
         assert_eq!(b, n)
     }
 
+    /// proptest does not support testing const generics.
     #[test]
-    fn all_words_mock_prover_test(a in 0..2u64.pow(WORD_BITS), b in 0..2u64.pow(WORD_BITS)) {
-      let k = 5;
-      let circuit = MyCircuit {
-          a: Some(Fp::from(a)),
-          b: Some(Fp::from(b)),
-      };
+    fn all_8_bit_words_mock_prover_test(a in 0..2u64.pow(8), b in 0..2u64.pow(8)) {
+        mock_prover_test::<8>(a, b)
+    }
+}
 
-      let c = Fp::from(a & b);
+proptest! {
+    #![proptest_config(ProptestConfig {
+      cases: 50, .. ProptestConfig::default()
+    })]
 
-      // Arrange the public input. We expose the bitwise AND result in row 0
-      // of the instance column, so we position it there in our public inputs.
-      let public_inputs = vec![c];
-
-      // Given the correct public input, our circuit will verify.
-      let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
-      assert_eq!(prover.verify(), Ok(()));
+    #[test]
+    fn all_8_bit_words_test(a in 0..2u64.pow(8), b in 0..2u64.pow(8)) {
+        let c = a & b;
+        gen_proof_and_verify::<8>(a, b, c)
     }
 
     #[test]
-    fn all_words_test(a in 0..2u64.pow(WORD_BITS), b in 0..2u64.pow(WORD_BITS)) {
+    fn all_16_bit_words_mock_prover_test(a in 0..2u64.pow(16), b in 0..2u64.pow(16)) {
+        mock_prover_test::<16>(a, b)
+    }
+
+    #[test]
+    fn all_16_bit_words_test(a in 0..2u64.pow(16), b in 0..2u64.pow(16)) {
         let c = a & b;
-        gen_proof_and_verify(a, b, c)
+        gen_proof_and_verify::<16>(a, b, c)
     }
 
     #[test]
     #[should_panic]
-    fn all_words_test_bad_proof(a in 0..2u64.pow(WORD_BITS), b in 0..2u64.pow(WORD_BITS), c in 0..2u64.pow(WORD_BITS)) {
+    fn all_words_test_bad_proof(a in 0..2u64.pow(8), b in 0..2u64.pow(8), c in 0..2u64.pow(8)) {
         prop_assume!(c != a & b);
-        gen_proof_and_verify(a, b, c)
+        gen_proof_and_verify::<8>(a, b, c)
     }
+}
+
+proptest! {
+    // The case number was picked to run all tests in about 60 seconds on my machine.
+    // TODO use `plonk::BatchVerifier` to speed up tests.
+    #![proptest_config(ProptestConfig {
+      cases: 20, .. ProptestConfig::default()
+    })]
+
+    #[test]
+    fn all_24_bit_words_mock_prover_test(a in 0..2u64.pow(24), b in 0..2u64.pow(24)) {
+        mock_prover_test::<24>(a, b)
+    }
+
+    #[test]
+    fn all_24_bit_words_test(a in 0..2u64.pow(24), b in 0..2u64.pow(24)) {
+        dbg!(a, b);
+        let c = a & b;
+        gen_proof_and_verify::<24>(a, b, c)
+    }
+
+}
+
+// It's used in the proptests
+#[allow(unused)]
+fn mock_prover_test<const WORD_BITS: u32>(a: u64, b: u64) {
+    let k = 1 + WORD_BITS / 2;
+    let circuit: MyCircuit<Fp, WORD_BITS> = MyCircuit {
+        a: Some(Fp::from(a)),
+        b: Some(Fp::from(b)),
+    };
+
+    let c = Fp::from(a & b);
+
+    // Arrange the public input. We expose the bitwise AND result in row 0
+    // of the instance column, so we position it there in our public inputs.
+    let public_inputs = vec![c];
+
+    // Given the correct public input, our circuit will verify.
+    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+    assert_eq!(prover.verify(), Ok(()));
+}
+
+#[test]
+fn zeros_mock_prover_test() {
+    const WORD_BITS: u32 = 24;
+    let a = 0;
+    let b = 0;
+    let k = 1 + WORD_BITS / 2;
+    let circuit = MyCircuit::<Fp, WORD_BITS> {
+        a: Some(Fp::from(a)),
+        b: Some(Fp::from(b)),
+    };
+
+    let c = Fp::from(a & b);
+
+    // Arrange the public input. We expose the bitwise AND result in row 0
+    // of the instance column, so we position it there in our public inputs.
+    let public_inputs = vec![c];
+
+    // Given the correct public input, our circuit will verify.
+    let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
+    assert_eq!(prover.verify(), Ok(()));
 }
 
 // TODO move into test module
 // It's used in the proptests
 #[allow(unused)]
-fn gen_proof_and_verify(a: u64, b: u64, c: u64) {
-    let k = 5;
-    let circuit = MyCircuit {
+fn gen_proof_and_verify<const WORD_BITS: u32>(a: u64, b: u64, c: u64) {
+    let k = 1 + WORD_BITS / 2;
+    let circuit: MyCircuit<Fp, WORD_BITS> = MyCircuit {
         a: Some(Fp::from(a)),
         b: Some(Fp::from(b)),
     };
@@ -589,6 +654,7 @@ fn gen_proof_and_verify(a: u64, b: u64, c: u64) {
 
 #[test]
 fn circuit_layout_test() {
+    const WORD_BITS: u32 = 8;
     let k = 5;
 
     // Prepare the private and public inputs to the circuit!
@@ -598,7 +664,7 @@ fn circuit_layout_test() {
     let b = Fp::from(B);
 
     // Instantiate the circuit with the private inputs.
-    let circuit = MyCircuit {
+    let circuit = MyCircuit::<Fp, WORD_BITS> {
         a: Some(a),
         b: Some(b),
     };
@@ -622,6 +688,7 @@ fn circuit_layout_test() {
 }
 
 fn main() {
+    const WORD_BITS: u32 = 8;
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example
     // circuit is very small, we can pick a very small value here.
@@ -635,7 +702,7 @@ fn main() {
     let c = Fp::from(A & B);
 
     // Instantiate the circuit with the private inputs.
-    let circuit = MyCircuit {
+    let circuit = MyCircuit::<Fp, WORD_BITS> {
         a: Some(a),
         b: Some(b),
     };

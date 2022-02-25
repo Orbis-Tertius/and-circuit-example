@@ -3,6 +3,10 @@ name = "and-circuit-example"
 version = "0.1.0"
 edition = "2021"
 
+[profile.test]
+opt-level = 3
+debug-assertions = true
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
