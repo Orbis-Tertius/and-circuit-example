@@ -530,9 +530,23 @@ proptest! {
 
     #[test]
     #[should_panic]
-    fn all_words_test_bad_proof(a in 0..2u64.pow(8), b in 0..2u64.pow(8), c in 0..2u64.pow(8)) {
+    fn all_8_bit_words_test_bad_proof(a in 0..2u64.pow(8), b in 0..2u64.pow(8), c in 0..2u64.pow(8)) {
         prop_assume!(c != a & b);
         gen_proof_and_verify::<8>(a, b, c)
+    }
+
+    #[test]
+    #[should_panic]
+    fn all_16_bit_words_test_bad_proof(a in 0..2u64.pow(16), b in 0..2u64.pow(16), c in 0..2u64.pow(16)) {
+        prop_assume!(c != a & b);
+        gen_proof_and_verify::<16>(a, b, c)
+    }
+
+    #[test]
+    #[should_panic]
+    fn all_24_bit_words_test_bad_proof(a in 0..2u64.pow(24), b in 0..2u64.pow(24), c in 0..2u64.pow(24)) {
+        prop_assume!(c != a & b);
+        gen_proof_and_verify::<24>(a, b, c)
     }
 }
 
@@ -550,7 +564,6 @@ proptest! {
 
     #[test]
     fn all_24_bit_words_test(a in 0..2u64.pow(24), b in 0..2u64.pow(24)) {
-        dbg!(a, b);
         let c = a & b;
         gen_proof_and_verify::<24>(a, b, c)
     }
