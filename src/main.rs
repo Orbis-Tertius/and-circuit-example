@@ -118,9 +118,9 @@ impl<F: FieldExt> AndChip<F> {
         });
 
         meta.create_gate("decompose", |meta| {
-            let lhs = dbg!(meta.query_advice(advice[0], Rotation::cur()));
-            let rhs = dbg!(meta.query_advice(advice[1], Rotation::cur()));
-            let out = dbg!(meta.query_advice(advice[0], Rotation::next()));
+            let lhs = meta.query_advice(advice[0], Rotation::cur());
+            let rhs = meta.query_advice(advice[1], Rotation::cur());
+            let out = meta.query_advice(advice[0], Rotation::next());
             let s_decompose = meta.query_selector(s_decompose);
 
             // Finally, we return the polynomial expressions that constrain this gate.
@@ -325,7 +325,7 @@ impl NumericInstructions<Fp> for AndChip<Fp> {
                         || "odd bits",
                         config.advice[1],
                         0,
-                        || o_oe.map(|oe| dbg!(oe.1)).ok_or(Error::Synthesis),
+                        || o_oe.map(|oe| oe.1).ok_or(Error::Synthesis),
                     )
                     .map(Word)?;
 
@@ -433,12 +433,10 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         let b = field_chip.load_private(layouter.namespace(|| "load b"), self.b)?;
 
         // index 2
-        let (ae, ao) =
-            field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), dbg!(a))?;
+        let (ae, ao) = field_chip.verify_decompose(layouter.namespace(|| "a decomposition"), a)?;
 
         // index 3
-        let (be, bo) =
-            field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), dbg!(b))?;
+        let (be, bo) = field_chip.verify_decompose(layouter.namespace(|| "b decomposition"), b)?;
 
         // index 4
         let e = field_chip.add(layouter.namespace(|| "ae + be"), ae, be)?;
@@ -446,23 +444,16 @@ impl Circuit<Fp> for MyCircuit<Fp> {
         let o = field_chip.add(layouter.namespace(|| "ao + be"), ao, bo)?;
 
         // // index 6
-        let (_ee, eo) =
-            field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), dbg!(e))?;
+        let (_ee, eo) = field_chip.verify_decompose(layouter.namespace(|| "e decomposition"), e)?;
 
         // index 7
-        let (_oe, oo) =
-            field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), dbg!(o))?;
+        let (_oe, oo) = field_chip.verify_decompose(layouter.namespace(|| "o decomposition"), o)?;
 
         // // index 8
-        let a_and_b = field_chip.compose(
-            layouter.namespace(|| "compose eo and oo"),
-            dbg!(eo),
-            dbg!(oo),
-        )?;
+        let a_and_b = field_chip.compose(layouter.namespace(|| "compose eo and oo"), eo, oo)?;
 
         // Expose the result as a public input to the circuit.
-        // field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
-        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), dbg!(a_and_b), 0)
+        field_chip.expose_public(layouter.namespace(|| "expose a_and_b"), a_and_b, 0)
     }
 }
 
@@ -512,7 +503,7 @@ proptest! {
     }
 
     #[test]
-    fn all_words_test(a in 0..2u64.pow(WORD_BITS), b in 0..2u64.pow(WORD_BITS)) {
+    fn all_words_mock_prover_test(a in 0..2u64.pow(WORD_BITS), b in 0..2u64.pow(WORD_BITS)) {
       let k = 5;
       let circuit = MyCircuit {
           a: Some(Fp::from(a)),
@@ -529,6 +520,72 @@ proptest! {
       let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
       assert_eq!(prover.verify(), Ok(()));
     }
+
+    #[test]
+    fn all_words_test(a in 0..2u64.pow(WORD_BITS), b in 0..2u64.pow(WORD_BITS)) {
+        let c = a & b;
+        gen_proof_and_verify(a, b, c)
+    }
+
+    #[test]
+    #[should_panic]
+    fn all_words_test_bad_proof(a in 0..2u64.pow(WORD_BITS), b in 0..2u64.pow(WORD_BITS), c in 0..2u64.pow(WORD_BITS)) {
+        prop_assume!(c != a & b);
+        gen_proof_and_verify(a, b, c)
+    }
+}
+
+// TODO move into test module
+// It's used in the proptests
+#[allow(unused)]
+fn gen_proof_and_verify(a: u64, b: u64, c: u64) {
+    let k = 5;
+    let circuit = MyCircuit {
+        a: Some(Fp::from(a)),
+        b: Some(Fp::from(b)),
+    };
+
+    let c = Fp::from(c);
+
+    // Arrange the public input. We expose the bitwise AND result in row 0
+    // of the instance column, so we position it there in our public inputs.
+
+    use halo2_proofs::{
+        plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, SingleVerifier},
+        poly::commitment::Params,
+        transcript::{Blake2bRead, Blake2bWrite},
+    };
+    use pasta_curves::{vesta, EqAffine};
+    use rand_core::OsRng;
+
+    let params: Params<EqAffine> = halo2_proofs::poly::commitment::Params::new(k);
+    let vk = keygen_vk(&params, &circuit).unwrap();
+
+    let pk = keygen_pk(&params, vk, &circuit).unwrap();
+    let mut transcript = Blake2bWrite::<_, vesta::Affine, _>::init(vec![]);
+
+    create_proof(
+        &params,
+        &pk,
+        &[circuit],
+        &[&[&[c]]],
+        &mut OsRng,
+        &mut transcript,
+    )
+    .expect("Failed to create proof");
+
+    let proof = transcript.finalize();
+
+    let mut transcript = Blake2bRead::init(&proof[..]);
+
+    verify_proof(
+        &params,
+        pk.get_vk(),
+        SingleVerifier::new(&params),
+        &[&[&[c]]],
+        &mut transcript,
+    )
+    .expect("could not verify_proof")
 }
 
 #[test]
