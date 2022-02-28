@@ -20,7 +20,7 @@
                  inherit system;
                };
 
-            rustChannel = "1.58.1";
+            rustChannel = "1.59.0";
              rustPkgs =
                pkgs.rustBuilder.makePackageSet'
                  { inherit rustChannel;
@@ -63,7 +63,7 @@
                    };
              in
              rustPkgs.workspaceShell {
-               nativeBuildInputs = with pkgs; [ rust-analyzer rustup cargo2nix.defaultPackage.${system} ];
+               nativeBuildInputs = with pkgs; [ rust-analyzer rustup cargo2nix.defaultPackage.${system} graphviz ];
                shellHook =
                    ''
                    cp --no-preserve=mode ${rust-toolchain} rust-toolchain.toml
